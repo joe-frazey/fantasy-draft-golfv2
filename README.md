@@ -1,17 +1,16 @@
-# PGA Leaderboard — Vercel Scaffold (Alias Fix)
+# Fantasy Draft Order — Live Leaderboard (Ready to Deploy)
 
-This version uses a RELATIVE import in `app/page.jsx`:
-```js
-import App from "../components/App";
-```
-and also ships `jsconfig.json` with `@/*` in case you want to use the alias.
+This bundle already contains your Canvas app as `components/App.jsx` and a built-in ESPN proxy.
 
-## Quick start
+## Run locally
 ```bash
 npm i
 npm run dev
+# open http://localhost:3000
 ```
 
-## Deploy
+## Deploy to Vercel
 - Push to GitHub → Import on Vercel, or
-- `npm i -g vercel && vercel && vercel --prod`
+- `npm i -g vercel && vercel --confirm && vercel --prod --confirm`
+
+No env vars needed.
