@@ -5,15 +5,15 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const g = (o, p, d) => p.split(".").reduce((x, k) => (x && x[k] !== undefined ? x[k] : d), o);
 const nk = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 const lbl = (n) => (n === 0 ? "E" : n > 0 ? `+${n}` : String(n));
-const pPar = (v) => { const s = String(v ?? "").trim().toUpperCase(); if (s === "" || s === "E") return 0; const m = s.match(/^[+-]?\\d+/); return m ? parseInt(m[0], 10) : Number.POSITIVE_INFINITY; };
-const looksTime = (s) => /\\d{1,2}:\\d{2}\\s*(AM|PM)/i.test(String(s||""));
-const teeFrom = (s) => { const m = String(s||"").toUpperCase().match(/(\\d{1,2}:\\d{2}\\s*(AM|PM))/); return m ? m[1].replace(/\\s+/g,' ') : String(s||""); };
-const statusFor = (p) => { const t = String(p?.thru||"").trim(); const fin = t.toUpperCase()==="F" || (/^\\d+$/.test(t) && +t>=18); if (fin) return "FINISHED"; return /^\\d+$/.test(t) ? `THRU ${t}` : ""; };
+const pPar = (v) => { const s = String(v ?? "").trim().toUpperCase(); if (s === "" || s === "E") return 0; const m = s.match(/^[+-]?\d+/); return m ? parseInt(m[0], 10) : Number.POSITIVE_INFINITY; };
+const looksTime = (s) => /\d{1,2}:\d{2}\s*(AM|PM)/i.test(String(s||""));
+const teeFrom = (s) => { const m = String(s||"").toUpperCase().match(/(\d{1,2}:\d{2}\s*(AM|PM))/); return m ? m[1].replace(/\s+/g,' ') : String(s||""); };
+const statusFor = (p) => { const t = String(p?.thru||"").trim(); const fin = t.toUpperCase()==="F" || (/^\d+$/.test(t) && +t>=18); if (fin) return "FINISHED"; return /^\d+$/.test(t) ? `THRU ${t}` : ""; };
 const todayVal = (p) => {
   const r = String(p?.today || "").trim().toUpperCase();
   if (!r || looksTime(r)) return null;
   if (r.startsWith("E")) return 0; // E or E THRU 15
-  const m = r.match(/[+-]\\d+/); // only explicit signed numbers
+  const m = r.match(/[+-]\d+/); // only explicit signed numbers
   return m ? parseInt(m[0], 10) : null;
 };
 const roundToPar = (v) => { const n = pPar(v); return Number.isFinite(n) ? n : 0; };
@@ -86,7 +86,7 @@ export default function App(){
   const blipStyle=(n,f)=>{const c=blipColor(n,f); if(!c) return undefined; return {animation:`${c==='green'?'blip-green':'blip-red'} 1200ms ease-out`}};
 
   // sounds (muted by default; enable via UI)
-  const ensureAudio=async()=>{try{const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null; if(!audioCtxRef.current) audioCtxRef.current=new AC(); if(audioCtxRef.current.state==='suspended') await audioCtxRef.current.resume(); return audioCtxRef.current;}catch{return null;}};
+  const ensureAudio=async()=>{try{const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null; if(!audioCtxRef.current) audioCtxRef.current=new AC(); if(!muted && audioCtxRef.current.state==='suspended') await audioCtxRef.current.resume(); return audioCtxRef.current;}catch{return null;}};
   const playSfx=async(kind)=>{ if(muted) return; const ctx=await ensureAudio(); if(!ctx) return; const now=Date.now(); if(now-(lastSoundRef.current||0)<100){} else lastSoundRef.current=now; const play=(f,t,d,type='sine',g=0.05)=>{const o=ctx.createOscillator();o.type=type;o.frequency.setValueAtTime(f,t);const gg=ctx.createGain();gg.gain.setValueAtTime(0.0001,t);gg.gain.exponentialRampToValueAtTime(g,t+0.02);gg.gain.exponentialRampToValueAtTime(0.0001,t+d);o.connect(gg).connect(ctx.destination);o.start(t);o.stop(t+d);}; const t0=ctx.currentTime+0.01; ({birdie:[523.25,659.25,783.99],eagle:[392.0,523.25,659.25,783.99],bogey:[196.0,164.81],double:[233.08,196.0,174.61],finish:[659.25,987.77],tee:[739.99]})[kind]?.forEach((f,i)=>play(f,t0+0.06*i,kind==='eagle'?0.8:kind==='tee'?0.25:0.6,kind==='bogey'?'sawtooth':kind==='double'?'square':kind==='eagle'?'triangle':'sine',0.055)); };
 
   const fetchData=async()=>{
@@ -95,15 +95,60 @@ export default function App(){
       const results=await Promise.allSettled(ENDPOINTS.map(u=>fetch(u,{headers:{Accept:"application/json"}}).then(r=>{if(!r.ok) throw new Error('bad'); return r.json();})));
       const datasets=[]; for (const r of results) if(r.status==='fulfilled'){ const d=normL(r.value)||normS(r.value); if(d?.length) datasets.push(d); }
       if(!datasets.length) throw new Error('no data');
-      const choose=(a,b)=>{ if(!a) return b; if(!b) return a; const aF=(statusFor(a)||"").includes('FIN'), bF=(statusFor(b)||"").includes('FIN'); if(aF!==bF) return aF?a:b; const n=(x)=>(/^\\d+$/.test(String(x.thru||""))?+x.thru:-1); if(n(a)!==n(b)) return n(a)>n(b)?a:b; const k=nk(a.name||b.name||""),p=prev.current[k]; if(p){ const pTo=pPar(p.toPar),pTv=todayVal(p),aTv=todayVal(a),bTv=todayVal(b),aTo=pPar(a.toPar),bTo=pPar(b.toPar); const fit=(to,tv)=>([pTo,pTv,tv,to].every(Number.isFinite))?Math.abs(to-(pTo+(tv-pTv))):99; const fA=fit(aTo,aTv),fB=fit(bTo,bTv); if(fA!==fB) return fA<fB?a:b; } const cnt=x=>[x.r1,x.r2,x.r3,x.r4].filter(Boolean).length; if(cnt(a)!==cnt(b)) return cnt(a)>cnt(b)?a:b; return a; };
+
+      // ---- robust chooser: prefer tee-time, then non-finished, then higher THRU, then continuity, then more round data
+      const choose=(a,b)=>{
+        if (!a) return b; if (!b) return a;
+        const aStatus = statusFor(a) || ""; const bStatus = statusFor(b) || "";
+        const aFin = aStatus.includes("FIN"); const bFin = bStatus.includes("FIN");
+        const aTime = looksTime(a?.today) || looksTime(a?.thru);
+        const bTime = looksTime(b?.today) || looksTime(b?.thru);
+        if (aTime !== bTime) return aTime ? a : b;        // 1) tee time beats finished anomaly
+        if (aFin !== bFin)   return aFin ? b : a;         // 2) not finished > finished
+        const thruNum = (x) => (/^\d+$/.test(String(x?.thru || "")) ? +x.thru : -1);
+        const ta = thruNum(a), tb = thruNum(b);
+        if (ta !== tb) return ta > tb ? a : b;            // 3) further along wins
+        const k = nk(a.name || b.name || ""), p = prev.current[k];
+        if (p) {                                          // 4) continuity
+          const pTo = pPar(p.toPar), pTv = todayVal(p);
+          const aTv = todayVal(a), bTv = todayVal(b);
+          const aTo = pPar(a.toPar), bTo = pPar(b.toPar);
+          const fit = (to, tv) => ([pTo,pTv,tv,to].every(Number.isFinite)) ? Math.abs(to - (pTo + (tv - pTv))) : 99;
+          const fA = fit(aTo, aTv), fB = fit(bTo, bTv);
+          if (fA !== fB) return fA < fB ? a : b;
+        }
+        const cnt = (x)=>[x.r1,x.r2,x.r3,x.r4].filter(Boolean).length;     // 5) richer rounds
+        const ca=cnt(a), cb=cnt(b);
+        if (ca !== cb) return ca > cb ? a : b;
+        return a;
+      };
+
       const map=new Map(); for(const ds of datasets){ for(const row of ds){ const k=nk(row.name); map.set(k,choose(map.get(k),row)); }}
-      let data=[...map.values()].sort((a,b)=>{ const pa=(String(a.position).match(/\\d+/)||[9999])[0], pb=(String(b.position).match(/\\d+/)||[9999])[0]; if(pa!=pb) return pa-pb; const na=+(String(a.toPar).replace('E','0')), nb=+(String(b.toPar).replace('E','0')); return (isNaN(na)?0:na)-(isNaN(nb)?0:nb); });
+      let data=[...map.values()].sort((a,b)=>{ const pa=(String(a.position).match(/\d+/)||[9999])[0], pb=(String(b.position).match(/\d+/)||[9999])[0]; if(pa!=pb) return pa-pb; const na=+(String(a.toPar).replace('E','0')), nb=+(String(b.toPar).replace('E','0')); return (isNaN(na)?0:na)-(isNaN(nb)?0:nb); });
 
       const nbp={}, msgs=[], bigs=[], nextPrev=prev.current||{};
-      for (const r0 of data){ const k=nk(r0.name), p0=nextPrev[k]; if(p0){ const o=pPar(p0.toPar), n=pPar(r0.toPar); if(Number.isFinite(o)&&Number.isFinite(n)&&o!==n) nbp[`${k}:toPar`]=n<o?'green':'red'; const os=statusFor(p0), ns=statusFor(r0), ot=todayVal(p0), nt=todayVal(r0); if(Number.isFinite(ot)&&Number.isFinite(nt)&&ot!==nt){ nbp[`${k}:today`]=nt<ot?'green':'red'; const d=nt-ot; let text=null, kind=null; if(d<=-2){text=`🦅 ${r0.name} eagle — Today ${lbl(nt)}`; kind='eagle';} else if(d===-1){text=`🐦 ${r0.name} birdie — Today ${lbl(nt)}`; kind='birdie';} else if(d===1){text=`☁️ ${r0.name} bogey — Today ${lbl(nt)}`; kind='bogey';} else if(d>=2){text=`💥 ${r0.name} double — Today ${lbl(nt)}`; kind='double';} if(text){ msgs.push({id:`${Date.now()}-${k}-t`,text}); bigs.push({id:`${Date.now()}-${k}-b`,kind,player:r0.name,today:nt,team:findTeamOf(r0.name)}); playSfx(kind); } }
-        if(os!==ns){ if((ns||"").toUpperCase().includes('FIN')){ msgs.push({id:`${Date.now()}-${k}-f`,text:`🏁 ${r0.name} finished (${r0.toPar||'E'})`}); playSfx('finish'); }
-          const wasT=looksTime(p0.today), nowT=looksTime(r0.today); if(!wasT&&nowT){ msgs.push({id:`${Date.now()}-${k}-tee`,text:`🕒 ${r0.name} tees off ${teeFrom(r0.today)}`}); playSfx('tee'); } }
-      } nextPrev[k]={toPar:r0.toPar,thru:r0.thru,today:r0.today}; }
+      for (const r0 of data){
+        const k=nk(r0.name), p0=nextPrev[k];
+        if(p0){
+          const o=pPar(p0.toPar), n=pPar(r0.toPar);
+          if(Number.isFinite(o)&&Number.isFinite(n)&&o!==n) nbp[`${k}:toPar`]=n<o?'green':'red';
+          const os=statusFor(p0), ns=statusFor(r0), ot=todayVal(p0), nt=todayVal(r0);
+          if(Number.isFinite(ot)&&Number.isFinite(nt)&&ot!==nt){
+            nbp[`${k}:today`]=nt<ot?'green':'red';
+            const d=nt-ot; let text=null, kind=null;
+            if(d<=-2){text=`🦅 ${r0.name} eagle — Today ${lbl(nt)}`; kind='eagle';}
+            else if(d===-1){text=`🐦 ${r0.name} birdie — Today ${lbl(nt)}`; kind='birdie';}
+            else if(d===1){text=`☁️ ${r0.name} bogey — Today ${lbl(nt)}`; kind='bogey';}
+            else if(d>=2){text=`💥 ${r0.name} double — Today ${lbl(nt)}`; kind='double';}
+            if(text){ msgs.push({id:`${Date.now()}-${k}-t`,text}); bigs.push({id:`${Date.now()}-${k}-b`,kind,player:r0.name,today:nt,team:findTeamOf(r0.name)}); }
+          }
+          if(os!==ns){
+            if((ns||"").toUpperCase().includes('FIN')){ msgs.push({id:`${Date.now()}-${k}-f`,text:`🏁 ${r0.name} finished (${r0.toPar||'E'})`}); }
+            const wasT=looksTime(p0.today), nowT=looksTime(r0.today); if(!wasT&&nowT){ msgs.push({id:`${Date.now()}-${k}-tee`,text:`🕒 ${r0.name} tees off ${teeFrom(r0.today)}`}); }
+          }
+        }
+        nextPrev[k]={toPar:r0.toPar,thru:r0.thru,today:r0.today};
+      }
       if(msgs.length) setTicker(prev=>{ const seen=new Set(prev.map(m=>m.text)); const uniq=[]; for(const m of msgs) if(!seen.has(m.text)){ uniq.push(m); seen.add(m.text);} const next=[...uniq.reverse(),...prev]; return next.slice(0,10); });
       if(bigs.length) bigs.forEach(pushAnnounce);
       prev.current=nextPrev; setBlip(nbp); if(Object.keys(nbp).length) setTimeout(()=>setBlip({}),1200);
@@ -154,7 +199,7 @@ export default function App(){
         </div>
       </td>
       <td className="px-3 py-2 whitespace-nowrap"><div className="wStatus text-left"><StatusNode p={t.p2}/></div></td>
-      <td className="px-3 py-2 font-semibold"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${Number.isFinite(t.sum)? (t.sum<0? 'bg-emerald-500/15 text-emerald-300 border border-emerald-700/40': t.sum>0? 'bg-rose-500/15 text-rose-300 border border-rose-700/40':'bg-slate-500/20 text-slate-200 border border-slate-500/30') : 'bg-slate-700/40 text-slate-300 border-slate-700'}`}>{Number.isFinite(t.sum)?lbl(t.sum):'—'}</span></td>
+      <td className="px-3 py-2 font-semibold"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${Number.isFinite(t.sum)? (t.sum<0? 'bg-emerald-500/15 text-emerald-300 border border-emerald-700/40': t.sum>0? 'bg-rose-500/15 text-rose-300 border border-rose-700/40':'bg-slate-500/20 text-slate-200 border-slate-500/30') : 'bg-slate-700/40 text-slate-300 border-slate-700'}`}>{Number.isFinite(t.sum)?lbl(t.sum):'—'}</span></td>
     </tr>
   )),[teams,blip]);
 
@@ -186,7 +231,7 @@ export default function App(){
         </div>
       </td>
       {/* Team total in its own tight column */}
-      <td className="px-3 py-2 font-semibold whitespace-nowrap text-right w-px"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${Number.isFinite(t.sum)? (t.sum<0? 'bg-emerald-500/15 text-emerald-300 border border-emerald-700/40': t.sum>0? 'bg-rose-500/15 text-rose-300 border border-rose-700/40':'bg-slate-500/20 text-slate-200 border border-slate-500/30') : 'bg-slate-700/40 text-slate-300 border-slate-700'}`}>{Number.isFinite(t.sum)?lbl(t.sum):'—'}</span></td>
+      <td className="px-3 py-2 font-semibold whitespace-nowrap text-right w-px"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${Number.isFinite(t.sum)? (t.sum<0? 'bg-emerald-500/15 text-emerald-300 border border-emerald-700/40': t.sum>0? 'bg-rose-500/15 text-rose-300 border border-rose-700/40':'bg-slate-500/20 text-slate-200 border-slate-500/30') : 'bg-slate-700/40 text-slate-300 border-slate-700'}`}>{Number.isFinite(t.sum)?lbl(t.sum):'—'}</span></td>
     </tr>
   )),[teams,blip]);
 
@@ -329,4 +374,4 @@ export default function App(){
   ["looksTime('3:05 PM')", looksTime('3:05 PM')===true], ["looksTime('10:00 am')", looksTime('10:00 am')===true], ["teeFrom('Tee 3:10 PM')", teeFrom('Tee 3:10 PM').includes('3:10')], ["statusFor F", statusFor({thru:'F'})==='FINISHED'],
   ["todayVal +2", todayVal({today:'+2'})===2], ["todayVal E", todayVal({today:'E'})===0], ["todayVal 'E THRU 15' == 0", todayVal({today:'E THRU 15'})===0], ["todayVal 'R3: +2 (T22)' == 2", todayVal({today:'R3: +2 (T22)'})===2], ["totalFromRounds == +3", totalFromRounds({r1:'-1',r2:'-1',r3:'+5',r4:''})===3], ["sumLabel 1", totalFromRounds({r1:'-1',r2:'E',r3:'+2',r4:''})===1],
   ["ScoreBadge defined", typeof ScoreBadge==='function']
-]; const results=T.map(([n,ok])=>`${ok?'✅':'❌'} ${n}`).join('\\n'); console.log('Fantasy Leaderboard self-tests:\\n'+results); }}catch{}})();
+]; const results=T.map(([n,ok])=>`${ok?'✅':'❌'} ${n}`).join('\n'); console.log('Fantasy Leaderboard self-tests:\n'+results); }}catch{}})();
