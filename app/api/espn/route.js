@@ -1,33 +1,15 @@
 export const runtime = 'edge';
-
-const MAP = {
-  leaderboard: 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga',
-  scoreboard:  'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard',
-};
-
-export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const target = searchParams.get('target');
-  const url = MAP[target];
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const kind = searchParams.get('kind');
+  let url = searchParams.get('url');
   if (!url) {
-    return new Response(JSON.stringify({ error: 'bad target' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    });
+    url = kind === 'scoreboard'
+      ? 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard'
+      : 'https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?league=pga';
   }
-
-  const resp = await fetch(url, { headers: { 'accept': 'application/json' }, cache: 'no-store' });
-  if (!resp.ok) {
-    return new Response(JSON.stringify({ error: 'upstream' }), {
-      status: 502,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-  const data = await resp.json();
-  return new Response(JSON.stringify(data), {
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 's-maxage=15, stale-while-revalidate=45',
-    },
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' }, next: { revalidate: 0 } });
+  return new Response(await res.text(), {
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
   });
 }

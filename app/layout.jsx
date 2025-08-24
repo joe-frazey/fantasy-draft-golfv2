@@ -1,14 +1,5 @@
 import "./globals.css";
-
-export const metadata = {
-  title: "Fantasy Draft Order — Live Leaderboard",
-  description: "Live PGA fantasy draft order leaderboard (ESPN data) — deployed on Vercel",
-};
-
+export const metadata = { title: "PGA Leaderboard", description: "Fantasy Draft Order — Live" };
 export default function RootLayout({ children }) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
+  return (<html lang="en"><body className="bg-slate-950 min-h-screen">{children}</body></html>);
 }
